@@ -61,9 +61,9 @@ app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(RequestCountMiddleware)
 
 # Static and template directories
-email_templates = Jinja2Templates(directory='api/core/dependencies/email/templates')
-EMAIL_STATIC_DIR = 'api/core/dependencies/email/static'
-app.mount(f'/{EMAIL_STATIC_DIR}', StaticFiles(directory=EMAIL_STATIC_DIR), name='email-static')
+# email_templates = Jinja2Templates(directory='api/core/dependencies/email/templates')
+# EMAIL_STATIC_DIR = 'api/core/dependencies/email/static'
+# app.mount(f'/{EMAIL_STATIC_DIR}', StaticFiles(directory=EMAIL_STATIC_DIR), name='email-static')
 
 MEDIA_DIR = './media'
 os.makedirs(MEDIA_DIR, exist_ok=True)
