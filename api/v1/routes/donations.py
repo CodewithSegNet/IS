@@ -28,7 +28,7 @@ from api.v1.schemas.donation import (
 router = APIRouter()
 
 # Ensure upload directory exists
-UPLOAD_DIR = Path("uploads/receipts")
+UPLOAD_DIR = Path("media")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_donation(db: Session, donation_id: UUID) -> Optional[Donation]:
