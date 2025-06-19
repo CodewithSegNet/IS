@@ -240,7 +240,7 @@ async def upload_receipt(
             shutil.copyfileobj(receipt.file, buffer)
         
         # Update donation with receipt reference in the new format
-        receipt_url = f"http://127.0.0.1:8000/media/receipt/{filename_with_title}"
+        receipt_url = f"https://is-y63l.onrender.com/media/receipt/{filename_with_title}"
         db_donation.payment_reference = receipt_url
         db.commit()
         
