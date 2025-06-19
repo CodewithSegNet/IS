@@ -76,7 +76,6 @@ class Subscriber(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    full_name = Column(String)
     is_active = Column(Boolean, default=True)
     subscribed_at = Column(DateTime, default=datetime.utcnow)
     unsubscribed_at = Column(DateTime)
@@ -116,9 +115,17 @@ class Volunteer(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
-    phone = Column(String)
-    skills = Column(String)
-    availability = Column(String)
-    message = Column(Text)
+    phone = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    
+class Donor(Base):
+    __tablename__ = "donors"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    full_name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
