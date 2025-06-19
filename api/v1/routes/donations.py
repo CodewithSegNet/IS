@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -257,6 +257,50 @@ async def upload_receipt(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading receipt: {str(e)}")
+    
+
+
+@router.get("/media/{filename}")
+async def serve_uploaded_file(filename: str):
+    """Serve uploaded files"""
+    file_path = UPLOAD_DIR / filename
+    
+    # Check if file exists
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if it's actually a file (not a directory)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Return the file
+    return FileResponse(
+        path=file_path,
+        media_type="application/octet-stream",  # or determine based on file extension
+        filename=filename
+    )
+
+# Optional: More sophisticated file serving with proper MIME types
+@router.get("/media/{filename}")
+async def serve_uploaded_file_with_mime(filename: str):
+    """Serve uploaded files with proper MIME types"""
+    file_path = UPLOAD_DIR / filename
+    
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine MIME type based on file extension
+    mime_type = "application/octet-stream"  # default
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        mime_type = f"image/{filename.split('.')[-1].lower()}"
+    elif filename.lower().endswith('.pdf'):
+        mime_type = "application/pdf"
+    
+    return FileResponse(
+        path=file_path,
+        media_type=mime_type,
+        filename=filename
+    )
     
 
 @router.get("/{donation_id}", response_model=DonationResponse)
