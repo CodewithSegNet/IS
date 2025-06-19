@@ -260,27 +260,26 @@ async def upload_receipt(
     
 
 
-@router.get("/media/{filename}")
-async def serve_uploaded_file(filename: str):
-    """Serve uploaded files"""
-    file_path = UPLOAD_DIR / filename
+# @router.get("/media/{filename}")
+# async def serve_uploaded_file(filename: str):
+#     """Serve uploaded files"""
+#     file_path = UPLOAD_DIR / filename
     
-    # Check if file exists
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
+#     # Check if file exists
+#     if not file_path.exists():
+#         raise HTTPException(status_code=404, detail="File not found")
     
-    # Check if it's actually a file (not a directory)
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+#     # Check if it's actually a file (not a directory)
+#     if not file_path.is_file():
+#         raise HTTPException(status_code=404, detail="File not found")
     
-    # Return the file
-    return FileResponse(
-        path=file_path,
-        media_type="application/octet-stream",  # or determine based on file extension
-        filename=filename
-    )
+#     # Return the file
+#     return FileResponse(
+#         path=file_path,
+#         media_type="application/octet-stream",  
+#         filename=filename
+#     )
 
-# Optional: More sophisticated file serving with proper MIME types
 @router.get("/media/{filename}")
 async def serve_uploaded_file_with_mime(filename: str):
     """Serve uploaded files with proper MIME types"""
