@@ -89,7 +89,7 @@ class DonationUpdate(BaseModel):
     donor_email: Optional[EmailStr] = None
     donor_phone: Optional[str] = None
     amount: Optional[float] = None
-    title: str
+    title: Optional[str] = None
     initiative_id: Optional[UUID] = None
     is_anonymous: Optional[bool] = None
     message: Optional[str] = None
