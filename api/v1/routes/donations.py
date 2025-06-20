@@ -207,7 +207,9 @@ async def upload_receipt(
     donation_id: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    """Upload payment receipt for a donation"""
+    """Upload payment receipt for a donation with atomic transaction"""
+    file_path = None
+    
     try:
         # Validate file type
         allowed_types = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
@@ -239,28 +241,66 @@ async def upload_receipt(
         filename_with_title = f"{donation_title}_{unique_id}.{file_extension}"
         file_path = UPLOAD_DIR / filename_with_title
         
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(receipt.file, buffer)
+        # Start atomic transaction
+        try:
+            # Begin database transaction
+            db.begin()
+            
+            # Save file first
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(receipt.file, buffer)
+            
+            # Verify file was written successfully
+            if not file_path.exists() or file_path.stat().st_size == 0:
+                raise Exception("File was not saved properly")
+            
+            # Update database with receipt reference
+            receipt_url = f"https://is-y63l.onrender.com/media/{filename_with_title}"
+            # receipt_url = f"http://127.0.0.1:8000/media/{filename_with_title}"
+            db_donation.payment_reference = receipt_url
+            
+            # Commit database transaction
+            db.commit()
+            
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Receipt uploaded successfully",
+                    "filename": filename_with_title,
+                    "receipt_url": receipt_url,
+                    "donation_id": donation_id
+                }
+            )
+            
+        except Exception as db_error:
+            # Rollback database transaction
+            db.rollback()
+            
+            # Clean up file if it was created
+            if file_path and file_path.exists():
+                try:
+                    file_path.unlink()
+                    print(f"Cleaned up file: {file_path}")
+                except Exception as cleanup_error:
+                    print(f"Failed to cleanup file {file_path}: {cleanup_error}")
+            
+            # Re-raise the original error
+            raise db_error
         
-        # Update donation with receipt reference in the new format
-        receipt_url = f"https://is-y63l.onrender.com/media/{filename_with_title}"
-        # receipt_url = f"http://127.0.0.1:8000/media/{filename_with_title}"
-        db_donation.payment_reference = receipt_url
-        db.commit()
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": "Receipt uploaded successfully",
-                "filename": filename_with_title,
-                "receipt_url": receipt_url,
-                "donation_id": donation_id
-            }
-        )
     except HTTPException:
+        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
+        # Clean up file if it exists and there was an error
+        if file_path and file_path.exists():
+            try:
+                file_path.unlink()
+                print(f"Cleaned up file after error: {file_path}")
+            except Exception as cleanup_error:
+                print(f"Failed to cleanup file {file_path}: {cleanup_error}")
+        
+        # Log the error for debugging
+        print(f"Upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading receipt: {str(e)}")
     
 
