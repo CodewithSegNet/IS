@@ -28,8 +28,12 @@ from api.v1.schemas.donation import (
 router = APIRouter()
 
 # Ensure upload directory exists
-UPLOAD_DIR = Path("media")
+UPLOAD_DIR = Path("./media")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+print(f"Upload directory exists: {UPLOAD_DIR.exists()}")
+print(f"Files in directory: {list(UPLOAD_DIR.glob('*')) if UPLOAD_DIR.exists() else 'Directory not found'}")
+
+
 
 def get_donation(db: Session, donation_id: UUID) -> Optional[Donation]:
     """Get a single donation by ID"""

@@ -13,10 +13,7 @@ from api.db.database import engine
 from api.v1.models.models import Base
 from api.v1.routes import (
     auth,
-    admin,
     donations,
-    users,
-    dashboard,
     volunteer,
     donor,
     subscriber
@@ -73,11 +70,8 @@ app.mount('/media', StaticFiles(directory=MEDIA_DIR), name='media')
 
 # Include versioned API routers
 api_version_one.include_router(auth.router, prefix="/auth", tags=["Auth"])
-api_version_one.include_router(admin.router, prefix="/admin", tags=["Admin Management"])
 api_version_one.include_router(donations.router, prefix="/donations", tags=["Donations"])
-api_version_one.include_router(users.router, prefix="/users", tags=["Users"])
 api_version_one.include_router(volunteer.router, prefix="/newsletters", tags=["Newsletters"])
-api_version_one.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_version_one.include_router(volunteer.router, prefix="/volunteers", tags=["volunteers"])
 api_version_one.include_router(donor.router, prefix="/donors", tags=["donors"])
 api_version_one.include_router(subscriber.router, prefix="/subscribers", tags=["subscribers"])
