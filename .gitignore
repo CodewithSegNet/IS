@@ -54,6 +54,9 @@ logs/
 # Uploads
 uploads/
 static/uploads/
+node_modules/
+package-lock.json
+package.json
 
 # Testing
 .pytest_cache/
