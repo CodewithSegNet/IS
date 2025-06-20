@@ -18,11 +18,25 @@ from pathlib import Path
 
 from api.db.database import get_db
 from api.v1.schemas.donation import (
-    DonationCreate, 
-    DonationUpdate, 
-    DonationResponse, 
+    DonationCreate,
+    DonationUpdate,
+    DonationResponse,
     DonationListResponse,
     FrontendDonationCreate
+)
+
+# Import settings to use proper configuration
+from api.utils.settings import settings
+
+import cloudinary
+import cloudinary.uploader
+from cloudinary.utils import cloudinary_url
+
+# Configure Cloudinary using settings
+cloudinary.config(
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET
 )
 
 router = APIRouter()
@@ -33,33 +47,36 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 print(f"Upload directory exists: {UPLOAD_DIR.exists()}")
 print(f"Files in directory: {list(UPLOAD_DIR.glob('*')) if UPLOAD_DIR.exists() else 'Directory not found'}")
 
-
+# Debug: Print Cloudinary configuration (remove in production)
+print(f"Cloudinary Config - Cloud Name: {settings.CLOUDINARY_CLOUD_NAME}")
+print(f"Cloudinary Config - API Key: {settings.CLOUDINARY_API_KEY[:8]}..." if settings.CLOUDINARY_API_KEY else "API Key: None")
+print(f"Cloudinary Config - API Secret: {'Set' if settings.CLOUDINARY_API_SECRET else 'Not Set'}")
 
 def get_donation(db: Session, donation_id: UUID) -> Optional[Donation]:
     """Get a single donation by ID"""
     return db.query(Donation).filter(Donation.id == donation_id).first()
 
 def get_donations(
-    db: Session, 
-    skip: int = 0, 
+    db: Session,
+    skip: int = 0,
     limit: int = 100,
     title: Optional[str] = None
 ) -> List[Donation]:
     """Get multiple donations with optional filtering by title"""
     query = db.query(Donation)
-    
+
     if title:
         query = query.filter(Donation.title == title)
-    
+
     return query.order_by(desc(Donation.created_at)).offset(skip).limit(limit).all()
 
 def count_donations(db: Session, title: Optional[str] = None) -> int:
     """Count total donations"""
     query = db.query(Donation)
-    
+
     if title:
         query = query.filter(Donation.title == title)
-    
+
     return query.count()
 
 def create_donation(db: Session, donation: DonationCreate) -> Donation:
@@ -75,22 +92,15 @@ def create_donation(db: Session, donation: DonationCreate) -> Donation:
         message=donation.message,
         status=DonationStatus.PENDING
     )
-    
+
     db.add(db_donation)
     db.commit()
     db.refresh(db_donation)
-    
+
     return db_donation
 
 def create_donation_from_frontend(db: Session, donation: FrontendDonationCreate) -> Donation:
     """Create donation from frontend data"""
-    # Handle title logic: use provided title or default to "General Donation"
-    # donation_title = donation.title if hasattr(donation, 'title') and donation.title else "General Donation"
-    
-    # If frontend sends "General Donation" or no specific title, use "General Donation"
-    # if not donation_title or donation_title.strip() == "":
-    #     donation_title = "General Donation"
-    
     db_donation = Donation(
         id=uuid.uuid4(),
         title=donation.title,
@@ -102,11 +112,11 @@ def create_donation_from_frontend(db: Session, donation: FrontendDonationCreate)
         message=donation.message,
         status=DonationStatus.PENDING
     )
-    
+
     db.add(db_donation)
     db.commit()
     db.refresh(db_donation)
-    
+
     return db_donation
 
 def update_donation(db: Session, donation_id: UUID, donation_update: DonationUpdate) -> Optional[Donation]:
@@ -114,12 +124,12 @@ def update_donation(db: Session, donation_id: UUID, donation_update: DonationUpd
     db_donation = get_donation(db, donation_id)
     if not db_donation:
         return None
-    
+
     update_data = donation_update.dict(exclude_unset=True)
-    
+
     for field, value in update_data.items():
         setattr(db_donation, field, value)
-    
+
     db.commit()
     db.refresh(db_donation)
     return db_donation
@@ -129,7 +139,7 @@ def delete_donation(db: Session, donation_id: UUID) -> bool:
     db_donation = get_donation(db, donation_id)
     if not db_donation:
         return False
-    
+
     db.delete(db_donation)
     db.commit()
     return True
@@ -141,10 +151,10 @@ def get_donations_by_email(db: Session, email: str) -> List[Donation]:
 def get_total_donated_amount(db: Session, title: Optional[str] = None) -> float:
     """Get total amount donated"""
     query = db.query(Donation).filter(Donation.status == DonationStatus.COMPLETED)
-    
+
     if title:
         query = query.filter(Donation.title == title)
-    
+
     donations = query.all()
     return sum(donation.amount for donation in donations)
 
@@ -159,7 +169,7 @@ async def get_donations_endpoint(
     try:
         donations = get_donations(db, skip=skip, limit=limit, title=title)
         total = count_donations(db, title=title)
-        
+
         return DonationListResponse(
             donations=donations,
             total=total,
@@ -179,10 +189,10 @@ async def create_donation_endpoint(
         # Validate amount
         if donation.amount <= 0:
             raise HTTPException(status_code=400, detail="Donation amount must be greater than 0")
-        
+
         # Create donation
         db_donation = create_donation_from_frontend(db, donation)
-        
+
         return DonationResponse(
             id=db_donation.id,
             title=db_donation.title,
@@ -207,145 +217,121 @@ async def upload_receipt(
     donation_id: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    """Upload payment receipt for a donation with atomic transaction"""
-    file_path = None
-    
+    """Upload payment receipt for a donation using Cloudinary"""
+
     try:
+        # Debug: Check if Cloudinary credentials are available
+        if not all([settings.CLOUDINARY_CLOUD_NAME, settings.CLOUDINARY_API_KEY, settings.CLOUDINARY_API_SECRET]):
+            print("Missing Cloudinary credentials:")
+            print(f"Cloud Name: {'Set' if settings.CLOUDINARY_CLOUD_NAME else 'Missing'}")
+            print(f"API Key: {'Set' if settings.CLOUDINARY_API_KEY else 'Missing'}")
+            print(f"API Secret: {'Set' if settings.CLOUDINARY_API_SECRET else 'Missing'}")
+            raise HTTPException(
+                status_code=500,
+                detail="Cloudinary configuration is incomplete. Please check your environment variables."
+            )
+
         # Validate file type
         allowed_types = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
         if receipt.content_type not in allowed_types:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Invalid file type. Only JPEG, PNG, and PDF files are allowed."
             )
-        
+
         # Validate file size (5MB limit)
         max_size = 5 * 1024 * 1024  # 5MB in bytes
         if receipt.size > max_size:
             raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
-        
+
         # Get donation to retrieve title
         try:
             donation_uuid = UUID(donation_id)
             db_donation = get_donation(db, donation_uuid)
             if not db_donation:
                 raise HTTPException(status_code=404, detail="Donation not found")
-            
+
             donation_title = db_donation.title.replace(" ", "_").lower()
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid donation ID format")
-        
-        # Generate filename with title prefix: title_uniqueid.extension
-        file_extension = receipt.filename.split(".")[-1] if receipt.filename else "jpg"
+
+        # Generate unique public_id for Cloudinary
         unique_id = str(uuid.uuid4())
-        filename_with_title = f"{donation_title}_{unique_id}.{file_extension}"
-        file_path = UPLOAD_DIR / filename_with_title
-        
-        # Start atomic transaction
+        public_id = f"receipts/{donation_title}_{unique_id}"
+
         try:
-            # Begin database transaction
-            db.begin()
+            # Determine resource type based on file content type
+            resource_type = "image" if receipt.content_type.startswith("image/") else "raw"
             
-            # Save file first
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(receipt.file, buffer)
+            # Debug: Log upload parameters
+            print(f"Uploading file: {receipt.filename}")
+            print(f"Content type: {receipt.content_type}")
+            print(f"Resource type: {resource_type}")
+            print(f"Public ID: {public_id}")
             
-            # Verify file was written successfully
-            if not file_path.exists() or file_path.stat().st_size == 0:
-                raise Exception("File was not saved properly")
-            
-            # Update database with receipt reference
-            receipt_url = f"https://is-y63l.onrender.com/media/{filename_with_title}"
-            # receipt_url = f"http://127.0.0.1:8000/media/{filename_with_title}"
+            # Upload to Cloudinary with proper parameters
+            upload_result = cloudinary.uploader.upload(
+                receipt.file,
+                public_id=public_id,
+                folder="donation_receipts",
+                resource_type=resource_type,
+                overwrite=True,
+                # Add file format handling for images
+                **({"quality": "auto", "fetch_format": "auto"} if resource_type == "image" else {})
+            )
+
+            # Get the secure URL
+            receipt_url = upload_result['secure_url']
+
+            # Update database with Cloudinary URL
             db_donation.payment_reference = receipt_url
-            
-            # Commit database transaction
             db.commit()
-            
+
             return JSONResponse(
                 status_code=200,
                 content={
                     "message": "Receipt uploaded successfully",
-                    "filename": filename_with_title,
+                    "filename": f"{donation_title}_{unique_id}",
                     "receipt_url": receipt_url,
-                    "donation_id": donation_id
+                    "donation_id": donation_id,
+                    "cloudinary_public_id": upload_result['public_id']
                 }
             )
-            
-        except Exception as db_error:
-            # Rollback database transaction
+
+        except Exception as upload_error:
             db.rollback()
-            
-            # Clean up file if it was created
-            if file_path and file_path.exists():
-                try:
-                    file_path.unlink()
-                    print(f"Cleaned up file: {file_path}")
-                except Exception as cleanup_error:
-                    print(f"Failed to cleanup file {file_path}: {cleanup_error}")
-            
-            # Re-raise the original error
-            raise db_error
-        
+            print(f"Cloudinary upload error: {upload_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload file to cloud storage: {str(upload_error)}"
+            )
+
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        # Clean up file if it exists and there was an error
-        if file_path and file_path.exists():
-            try:
-                file_path.unlink()
-                print(f"Cleaned up file after error: {file_path}")
-            except Exception as cleanup_error:
-                print(f"Failed to cleanup file {file_path}: {cleanup_error}")
-        
-        # Log the error for debugging
         print(f"Upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading receipt: {str(e)}")
-    
-
-
-# @router.get("/media/{filename}")
-# async def serve_uploaded_file(filename: str):
-#     """Serve uploaded files"""
-#     file_path = UPLOAD_DIR / filename
-    
-#     # Check if file exists
-#     if not file_path.exists():
-#         raise HTTPException(status_code=404, detail="File not found")
-    
-#     # Check if it's actually a file (not a directory)
-#     if not file_path.is_file():
-#         raise HTTPException(status_code=404, detail="File not found")
-    
-#     # Return the file
-#     return FileResponse(
-#         path=file_path,
-#         media_type="application/octet-stream",  
-#         filename=filename
-#     )
 
 @router.get("/media/{filename}")
 async def serve_uploaded_file_with_mime(filename: str):
     """Serve uploaded files with proper MIME types"""
     file_path = UPLOAD_DIR / filename
-    
+
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     # Determine MIME type based on file extension
     mime_type = "application/octet-stream"  # default
     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         mime_type = f"image/{filename.split('.')[-1].lower()}"
     elif filename.lower().endswith('.pdf'):
         mime_type = "application/pdf"
-    
+
     return FileResponse(
         path=file_path,
         media_type=mime_type,
         filename=filename
     )
-    
 
 @router.get("/{donation_id}", response_model=DonationResponse)
 async def get_donation_endpoint(donation_id: UUID, db: Session = Depends(get_db)):
@@ -354,7 +340,7 @@ async def get_donation_endpoint(donation_id: UUID, db: Session = Depends(get_db)
         db_donation = get_donation(db, donation_id)
         if not db_donation:
             raise HTTPException(status_code=404, detail="Donation not found")
-        
+
         return DonationResponse(
             id=db_donation.id,
             title=db_donation.title,
@@ -384,7 +370,7 @@ async def update_donation_endpoint(
         db_donation = update_donation(db, donation_id, donation_update)
         if not db_donation:
             raise HTTPException(status_code=404, detail="Donation not found")
-        
+
         return DonationResponse(
             id=db_donation.id,
             title=db_donation.title,
@@ -410,7 +396,7 @@ async def delete_donation_endpoint(donation_id: UUID, db: Session = Depends(get_
         success = delete_donation(db, donation_id)
         if not success:
             raise HTTPException(status_code=404, detail="Donation not found")
-        
+
         return JSONResponse(
             status_code=200,
             content={"message": "Donation deleted successfully"}
@@ -444,7 +430,7 @@ async def get_donation_stats(
     try:
         total_amount = get_total_donated_amount(db, title)
         total_count = count_donations(db, title)
-        
+
         return {
             "total_amount": total_amount,
             "total_donations": total_count,
@@ -462,10 +448,10 @@ async def verify_donation(
     try:
         donation_update = DonationUpdate(status="completed")
         db_donation = update_donation(db, donation_id, donation_update)
-        
+
         if not db_donation:
             raise HTTPException(status_code=404, detail="Donation not found")
-        
+
         return JSONResponse(
             status_code=200,
             content={
@@ -488,10 +474,10 @@ async def reject_donation(
     try:
         donation_update = DonationUpdate(status="failed")
         db_donation = update_donation(db, donation_id, donation_update)
-        
+
         if not db_donation:
             raise HTTPException(status_code=404, detail="Donation not found")
-        
+
         return JSONResponse(
             status_code=200,
             content={

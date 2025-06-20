@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # File Uploads
     MAX_FILE_SIZE: int = config("MAX_FILE_SIZE", cast=int)
     UPLOAD_DIR: str = config("UPLOAD_DIR")
+    
+    CLOUDINARY_CLOUD_NAME: str = config("CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY: str = config("CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET: str = config("CLOUDINARY_API_SECRET")
 
     # Optional Tool Flag
     @property
